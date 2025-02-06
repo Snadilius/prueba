@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abrir Cámara</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+        }
+        video {
+            display: none;
+            width: 100%;
+            max-width: 400px;
+        }
+        input {
+            display: none;
+            font-size: 16px;
+            padding: 5px;
+            width: 80%;
+            text-align: center;
+        }
+        #qrContainer {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <button id="openCamera">Abrir Cámara</button>
+    <video id="video" autoplay playsinline></video>
+    <input type="text" id="qrResult" />
+    <button id="generateQR" style="display:none;">Generar QR</button>
+    <div id="qrContainer"></div>
+
+    <script src="https://unpkg.com/jsqr"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script>
+        document.getElementById('openCamera').addEventListener('click', async () => {
+            try {
+                const button = document.getElementById('openCamera');
+                button.style.display = 'none';
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.style.display = 'block';
+
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                function scanQRCode() {
+                    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        const code = jsQR(imageData.data, canvas.width, canvas.height);
+                        if (code) {
+                            document.getElementById('qrResult').value = code.data;
+                            document.getElementById('qrResult').style.display = 'block';
+                            document.getElementById('generateQR').style.display = 'block';
+                            video.srcObject.getTracks().forEach(track => track.stop());
+                            video.style.display = 'none';
+                        } else {
+                            requestAnimationFrame(scanQRCode);
+                        }
+                    } else {
+                        requestAnimationFrame(scanQRCode);
+                    }
+                }
+                video.addEventListener('play', scanQRCode);
+            } catch (error) {
+                console.error('Error al acceder a la cámara:', error);
+            }
+        });
+
+        document.getElementById('generateQR').addEventListener('click', () => {
+            const qrText = document.getElementById('qrResult').value;
+            const qrContainer = document.getElementById('qrContainer');
+            qrContainer.innerHTML = ""; // Borra el QR anterior
+            if (qrText) {
+                new QRCode(qrContainer, qrText);
+            }
+        });
+    </script>
+</body>
+</html>
