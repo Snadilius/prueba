@@ -53,7 +53,7 @@
         let useBackCamera = true;
         const m = 0.018, q = -0.009;
         let calibracionCorrecta = false;
-        let val100seg = 11.1; // Valor medio del nivel 100.00 (seg)
+        let val100seg = null;  // Se extraerá de la primera imagen
 
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
@@ -123,8 +123,10 @@
             Tesseract.recognize(imageSrc, 'eng', { logger: m => console.log(m) })
                 .then(({ data: { text } }) => {
                     console.log("Texto detectado:", text);
-                    if (text.includes("100.00")) {
-                        document.getElementById('val100').innerText = "100.00";
+                    const match = text.match(/\d+\.\d+/);
+                    if (match) {
+                        val100seg = parseFloat(match[0]);  // Extrae el valor del 100%
+                        document.getElementById('val100').innerText = val100seg;
                         document.getElementById('xCoord').innerText = "X Extraída";
                         document.getElementById('yCoord').innerText = "Y Extraída";
                         document.getElementById('dataBox').style.display = "block";
@@ -133,7 +135,7 @@
                         calibracionCorrecta = true;
                         secondStep.style.display = "block";
                     } else {
-                        message.innerText = "Error: la calibración no es válida. Intenta otra foto.";
+                        message.innerText = "Error: No se detectó el valor del 100%. Intenta otra foto.";
                         calibracionCorrecta = false;
                         secondStep.style.display = "none";
                     }
@@ -142,7 +144,7 @@
 
         document.getElementById('upload2').addEventListener('change', (event) => {
             if (!calibracionCorrecta) {
-                alert("Primero debes subir una imagen con calibración 100.00.");
+                alert("Primero debes subir una imagen con calibración válida.");
                 return;
             }
 
