@@ -3,178 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calibración por Foto</title>
+    <title>Calculadora PT con Captura de Imágenes</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
     <style>
-        body { text-align: center; font-family: Arial, sans-serif; }
-        video, canvas, img { display: block; margin: 10px auto; max-width: 100%; }
-        #photo, #photo2, #resultBox { display: none; }
-        #dataBox, #dataBox2, #resultBox { border: 1px solid black; padding: 10px; margin: 10px auto; width: 80%; }
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #video, #canvas, #photo { display: block; margin: 10px auto; }
+        #canvas, #photo { display: none; }
+        #result { margin-top: 20px; font-size: 1.2em; }
     </style>
 </head>
 <body>
+    <h1>Calculadora PT con Captura de Imágenes</h1>
 
-    <h2>Sube o toma una foto</h2>
+    <!-- Sección para capturar o cargar una imagen -->
+    <div>
+        <button id="startCamera">Usar Cámara</button>
+        <input type="file" id="uploadImage" accept="image/*">
+    </div>
 
-    <input type="file" id="upload" accept="image/*">
-    <button id="toggleCamera">Elegir Cámara</button>
-    <button id="openCamera">Abrir Cámara</button>
-    <video id="video" autoplay style="display:none;"></video>
+    <!-- Vista previa de la cámara y captura de imagen -->
+    <video id="video" width="320" height="240" autoplay></video>
     <button id="capture" style="display:none;">Capturar Foto</button>
-    <canvas id="canvas" style="display:none;"></canvas>
-    <img id="photo" alt="Foto capturada">
+    <canvas id="canvas" width="320" height="240"></canvas>
+    <img id="photo" alt="Foto capturada" width="320" height="240">
 
-    <div id="dataBox" style="display:none;">
-        <h3>Datos de la primera imagen</h3>
-        <p><strong>Valor 100%:</strong> <span id="val100"></span></p>
-        <p><strong>X:</strong> <span id="xCoord"></span></p>
-        <p><strong>Y:</strong> <span id="yCoord"></span></p>
-    </div>
-
-    <h2 id="message"></h2>
-
-    <div id="secondStep" style="display:none;">
-        <h2>Sube o toma la segunda foto</h2>
-        <input type="file" id="upload2" accept="image/*">
-        <img id="photo2" alt="Segunda foto">
-
-        <div id="dataBox2" style="display:none;">
-            <h3>Datos de la segunda imagen</h3>
-            <p><strong>VPN:</strong> <span id="vpnVal"></span></p>
-        </div>
-    </div>
-
-    <div id="resultBox" style="display:none;">
-        <h2>Resultado Final</h2>
-        <p id="result"></p>
+    <!-- Sección para mostrar datos extraídos y resultados -->
+    <div id="result">
+        <p><strong>Valor 100%:</strong> <span id="val100">N/A</span></p>
+        <p><strong>X:</strong> <span id="xCoord">N/A</span></p>
+        <p><strong>Y:</strong> <span id="yCoord">N/A</span></p>
+        <p><strong>Normalidad (seg):</strong> <span id="normalidad">N/A</span></p>
+        <p><strong>Resultado:</strong> <span id="resultado">N/A</span></p>
     </div>
 
     <script>
-        let useBackCamera = true;
-        const m = 0.018, q = -0.009;
-        let calibracionCorrecta = false;
-        let val100seg = null;  // Se extraerá de la primera imagen
-
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const photo = document.getElementById('photo');
-        const photo2 = document.getElementById('photo2');
-        const message = document.getElementById('message');
-        const resultBox = document.getElementById('resultBox');
-        const result = document.getElementById('result');
-        const secondStep = document.getElementById('secondStep');
+        const startCamera = document.getElementById('startCamera');
+        const capture = document.getElementById('capture');
+        const uploadImage = document.getElementById('uploadImage');
+        const val100Elem = document.getElementById('val100');
+        const xCoordElem = document.getElementById('xCoord');
+        const yCoordElem = document.getElementById('yCoord');
+        const normalidadElem = document.getElementById('normalidad');
+        const resultadoElem = document.getElementById('resultado');
 
-        document.getElementById('toggleCamera').addEventListener('click', () => {
-            useBackCamera = !useBackCamera;
-            alert("Usando cámara " + (useBackCamera ? "trasera" : "delantera"));
-        });
+        let streaming = false;
+        let width = 320;
+        let height = 0;
 
-        document.getElementById('openCamera').addEventListener('click', () => {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: useBackCamera ? "environment" : "user" } })
+        // Función para iniciar la cámara
+        startCamera.addEventListener('click', () => {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
                 .then(stream => {
                     video.srcObject = stream;
-                    video.style.display = "block";
-                    document.getElementById('capture').style.display = "block";
+                    video.play();
+                    capture.style.display = 'block';
                 })
-                .catch(error => console.error("Error al acceder a la cámara: ", error));
+                .catch(err => {
+                    console.error("Error al acceder a la cámara: ", err);
+                });
         });
 
-        document.getElementById('capture').addEventListener('click', () => {
-            takePhoto();
-        });
+        // Configurar el tamaño del video una vez que pueda reproducirse
+        video.addEventListener('canplay', (ev) => {
+            if (!streaming) {
+                height = video.videoHeight / (video.videoWidth / width);
+                video.setAttribute('width', width);
+                video.setAttribute('height', height);
+                canvas.setAttribute('width', width);
+                canvas.setAttribute('height', height);
+                streaming = true;
+            }
+        }, false);
 
-        document.getElementById('upload').addEventListener('change', (event) => {
-            processImage(event.target.files[0], photo);
-        });
+        // Función para capturar la imagen desde la cámara
+        capture.addEventListener('click', (ev) => {
+            takePicture();
+            ev.preventDefault();
+        }, false);
 
-        function takePhoto() {
-            const context = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            photo.src = canvas.toDataURL('image/png');
-            photo.style.display = "block";
-
-            video.srcObject.getTracks().forEach(track => track.stop());
-            video.style.display = "none";
-            document.getElementById('capture').style.display = "none";
-
-            processImageFromCanvas();
-        }
-
-        function processImageFromCanvas() {
-            canvas.toBlob(blob => {
-                processImage(blob, photo);
-            });
-        }
-
-        function processImage(file, imgElement) {
+        // Función para procesar la imagen cargada
+        uploadImage.addEventListener('change', (event) => {
+            const file = event.target.files[0];
             const reader = new FileReader();
-            reader.onload = function () {
-                imgElement.src = reader.result;
-                imgElement.style.display = "block";
-                extractText(reader.result);
+            reader.onload = function(e) {
+                photo.setAttribute('src', e.target.result);
+                photo.style.display = 'block';
+                processImage(e.target.result);
             };
             reader.readAsDataURL(file);
-        }
-
-        function extractText(imageSrc) {
-            message.innerText = "Procesando imagen...";
-            Tesseract.recognize(imageSrc, 'eng', { logger: m => console.log(m) })
-                .then(({ data: { text } }) => {
-                    console.log("Texto detectado:", text);
-                    const match = text.match(/\d+\.\d+/);
-                    if (match) {
-                        val100seg = parseFloat(match[0]);  // Extrae el valor del 100%
-                        document.getElementById('val100').innerText = val100seg;
-                        document.getElementById('xCoord').innerText = "X Extraída";
-                        document.getElementById('yCoord').innerText = "Y Extraída";
-                        document.getElementById('dataBox').style.display = "block";
-
-                        message.innerText = "Calibración correcta. Carga la segunda foto.";
-                        calibracionCorrecta = true;
-                        secondStep.style.display = "block";
-                    } else {
-                        message.innerText = "Error: No se detectó el valor del 100%. Intenta otra foto.";
-                        calibracionCorrecta = false;
-                        secondStep.style.display = "none";
-                    }
-                });
-        }
-
-        document.getElementById('upload2').addEventListener('change', (event) => {
-            if (!calibracionCorrecta) {
-                alert("Primero debes subir una imagen con calibración válida.");
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = function () {
-                photo2.src = reader.result;
-                photo2.style.display = "block";
-                extractVPN(reader.result);
-            };
-            reader.readAsDataURL(event.target.files[0]);
         });
 
-        function extractVPN(imageSrc) {
-            message.innerText = "Procesando segunda imagen...";
-            Tesseract.recognize(imageSrc, 'eng', { logger: m => console.log(m) })
-                .then(({ data: { text } }) => {
-                    const vpnMatch = text.match(/\d+\.\d+/);
-                    if (vpnMatch) {
-                        const vpn = parseFloat(vpnMatch[0]);
-                        document.getElementById('vpnVal').innerText = vpn;
-                        document.getElementById('dataBox2').style.display = "block";
+        // Función para capturar la imagen y procesarla
+        function takePicture() {
+            const context = canvas.getContext('2d');
+            if (width && height) {
+                canvas.width = width;
+                canvas.height = height;
+                context.drawImage(video, 0, 0, width, height);
 
-                        const resultado = 1 / (m * (val100seg / vpn) + q);
-                        result.innerText = "Resultado: " + resultado.toFixed(4);
-                        resultBox.style.display = "block";
-                    } else {
-                        message.innerText = "Error: No se pudo extraer el VPN.";
-                    }
-                });
+                const data = canvas.toDataURL('image/png');
+                photo.setAttribute('src', data);
+                photo.style.display = 'block';
+
+                processImage(data);
+            }
         }
-    </script>
-</body>
-</html>
+
+        // Función para procesar la imagen y extraer datos
+        function processImage(imageData) {
+            Tesseract.recognize(
+                imageData,
+                'eng',
+                {
+                    logger: m => console.log(m)
+                }
+            ).then(({ data: { text } }) => {
+                console.log(text);
+                // Aquí puedes implementar la lógica para extraer los valores de la imagen
+                // Por ejemplo, podrías buscar números específicos en el texto reconocido
+                // y asignarlos a val100, xCoord, yCoord, normalidad, etc.
+
+                // Ejemplo de extracción de datos (esto dependerá del formato de tus imágenes)
+                const val100Match = text.match(/100% Cal19
