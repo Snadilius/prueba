@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibración por Foto</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; }
+        video, canvas, img { display: block; margin: 10px auto; max-width: 100%; }
+        #photo, #photo2, #result { display: none; }
+    </style>
+</head>
+<body>
+
+    <h2>Sube o toma una foto</h2>
+
+    <input type="file" id="upload" accept="image/*">
+    <button id="openCamera">Abrir Cámara</button>
+    <video id="video" autoplay style="display:none;"></video>
+    <button id="capture" style="display:none;">Capturar Foto</button>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <img id="photo" alt="Foto capturada">
+
+    <h2 id="message"></h2>
+
+    <div id="secondStep" style="display:none;">
+        <h2>Sube o toma la segunda foto</h2>
+        <input type="file" id="upload2" accept="image/*">
+        <img id="photo2" alt="Segunda foto">
+        <h2 id="result"></h2>
+    </div>
+
+    <script>
+        const m = 0.018, q = -0.009;
+        let calibracionCorrecta = false;
+        let val100seg = 11.1; // Valor medio del nivel 100.00 (seg)
+
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const photo = document.getElementById('photo');
+        const photo2 = document.getElementById('photo2');
+        const message = document.getElementById('message');
+        const result = document.getElementById('result');
+        const secondStep = document.getElementById('secondStep');
+
+        document.getElementById('openCamera').addEventListener('click', () => {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.style.display = "block";
+                    document.getElementById('capture').style.display = "block";
+                })
+                .catch(error => console.error("Error al acceder a la cámara: ", error));
+        });
+
+        document.getElementById('capture').addEventListener('click', () => {
+            takePhoto();
+        });
+
+        document.getElementById('upload').addEventListener('change', (event) => {
+            processImage(event.target.files[0], photo);
+        });
+
+        function takePhoto() {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            photo.src = canvas.toDataURL('image/png');
+            photo.style.display = "block";
+
+            video.srcObject.getTracks().forEach(track => track.stop());
+            video.style.display = "none";
+            document.getElementById('capture').style.display = "none";
+
+            processImageFromCanvas();
+        }
+
+        function processImageFromCanvas() {
+            canvas.toBlob(blob => {
+                processImage(blob, photo);
+            });
+        }
+
+        function processImage(file, imgElement) {
+            const reader = new FileReader();
+            reader.onload = function () {
+                imgElement.src = reader.result;
+                imgElement.style.display = "block";
+                extractText(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function extractText(imageSrc) {
+            message.innerText = "Procesando imagen...";
+            Tesseract.recognize(imageSrc, 'eng', {
+                logger: m => console.log(m)
+            }).then(({ data: { text } }) => {
+                console.log("Texto detectado:", text);
+                if (text.includes("100.00")) {
+                    message.innerText = "Calibración correcta. Carga la segunda foto.";
+                    calibracionCorrecta = true;
+                    secondStep.style.display = "block";
+                } else {
+                    message.innerText = "Error: la calibración no es válida. Intenta otra foto.";
+                    calibracionCorrecta = false;
+                    secondStep.style.display = "none";
+                }
+            });
+        }
+
+        document.getElementById('upload2').addEventListener('change', (event) => {
+            if (!calibracionCorrecta) {
+                alert("Primero debes subir una imagen con calibración 100.00.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function () {
+                photo2.src = reader.result;
+                photo2.style.display = "block";
+                extractVPN(reader.result);
+            };
+            reader.readAsDataURL(event.target.files[0]);
+        });
+
+        function extractVPN(imageSrc) {
+            message.innerText = "Procesando segunda imagen...";
+            Tesseract.recognize(imageSrc, 'eng', {
+                logger: m => console.log(m)
+            }).then(({ data: { text } }) => {
+                const vpnMatch = text.match(/\d+\.\d+/);
+                if (vpnMatch) {
+                    const vpn = parseFloat(vpnMatch[0]);
+                    const resultado = 1 / (m * (val100seg / vpn) + q);
+                    result.innerText = "Resultado: " + resultado.toFixed(4);
+                    result.style.display = "block";
+                } else {
+                    message.innerText = "Error: No se pudo extraer el VPN.";
+                }
+            });
+        }
+    </script>
+</body>
+</html>
