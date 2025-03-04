@@ -8,7 +8,8 @@
     <style>
         body { text-align: center; font-family: Arial, sans-serif; }
         video, canvas, img { display: block; margin: 10px auto; max-width: 100%; }
-        #photo, #photo2, #result { display: none; }
+        #photo, #photo2, #resultBox { display: none; }
+        #dataBox, #dataBox2, #resultBox { border: 1px solid black; padding: 10px; margin: 10px auto; width: 80%; }
     </style>
 </head>
 <body>
@@ -16,11 +17,19 @@
     <h2>Sube o toma una foto</h2>
 
     <input type="file" id="upload" accept="image/*">
+    <button id="toggleCamera">Elegir Cámara</button>
     <button id="openCamera">Abrir Cámara</button>
     <video id="video" autoplay style="display:none;"></video>
     <button id="capture" style="display:none;">Capturar Foto</button>
     <canvas id="canvas" style="display:none;"></canvas>
     <img id="photo" alt="Foto capturada">
+
+    <div id="dataBox" style="display:none;">
+        <h3>Datos de la primera imagen</h3>
+        <p><strong>Valor 100%:</strong> <span id="val100"></span></p>
+        <p><strong>X:</strong> <span id="xCoord"></span></p>
+        <p><strong>Y:</strong> <span id="yCoord"></span></p>
+    </div>
 
     <h2 id="message"></h2>
 
@@ -28,10 +37,20 @@
         <h2>Sube o toma la segunda foto</h2>
         <input type="file" id="upload2" accept="image/*">
         <img id="photo2" alt="Segunda foto">
-        <h2 id="result"></h2>
+
+        <div id="dataBox2" style="display:none;">
+            <h3>Datos de la segunda imagen</h3>
+            <p><strong>VPN:</strong> <span id="vpnVal"></span></p>
+        </div>
+    </div>
+
+    <div id="resultBox" style="display:none;">
+        <h2>Resultado Final</h2>
+        <p id="result"></p>
     </div>
 
     <script>
+        let useBackCamera = true;
         const m = 0.018, q = -0.009;
         let calibracionCorrecta = false;
         let val100seg = 11.1; // Valor medio del nivel 100.00 (seg)
@@ -41,11 +60,17 @@
         const photo = document.getElementById('photo');
         const photo2 = document.getElementById('photo2');
         const message = document.getElementById('message');
+        const resultBox = document.getElementById('resultBox');
         const result = document.getElementById('result');
         const secondStep = document.getElementById('secondStep');
 
+        document.getElementById('toggleCamera').addEventListener('click', () => {
+            useBackCamera = !useBackCamera;
+            alert("Usando cámara " + (useBackCamera ? "trasera" : "delantera"));
+        });
+
         document.getElementById('openCamera').addEventListener('click', () => {
-            navigator.mediaDevices.getUserMedia({ video: true })
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: useBackCamera ? "environment" : "user" } })
                 .then(stream => {
                     video.srcObject = stream;
                     video.style.display = "block";
@@ -95,20 +120,24 @@
 
         function extractText(imageSrc) {
             message.innerText = "Procesando imagen...";
-            Tesseract.recognize(imageSrc, 'eng', {
-                logger: m => console.log(m)
-            }).then(({ data: { text } }) => {
-                console.log("Texto detectado:", text);
-                if (text.includes("100.00")) {
-                    message.innerText = "Calibración correcta. Carga la segunda foto.";
-                    calibracionCorrecta = true;
-                    secondStep.style.display = "block";
-                } else {
-                    message.innerText = "Error: la calibración no es válida. Intenta otra foto.";
-                    calibracionCorrecta = false;
-                    secondStep.style.display = "none";
-                }
-            });
+            Tesseract.recognize(imageSrc, 'eng', { logger: m => console.log(m) })
+                .then(({ data: { text } }) => {
+                    console.log("Texto detectado:", text);
+                    if (text.includes("100.00")) {
+                        document.getElementById('val100').innerText = "100.00";
+                        document.getElementById('xCoord').innerText = "X Extraída";
+                        document.getElementById('yCoord').innerText = "Y Extraída";
+                        document.getElementById('dataBox').style.display = "block";
+
+                        message.innerText = "Calibración correcta. Carga la segunda foto.";
+                        calibracionCorrecta = true;
+                        secondStep.style.display = "block";
+                    } else {
+                        message.innerText = "Error: la calibración no es válida. Intenta otra foto.";
+                        calibracionCorrecta = false;
+                        secondStep.style.display = "none";
+                    }
+                });
         }
 
         document.getElementById('upload2').addEventListener('change', (event) => {
@@ -128,19 +157,21 @@
 
         function extractVPN(imageSrc) {
             message.innerText = "Procesando segunda imagen...";
-            Tesseract.recognize(imageSrc, 'eng', {
-                logger: m => console.log(m)
-            }).then(({ data: { text } }) => {
-                const vpnMatch = text.match(/\d+\.\d+/);
-                if (vpnMatch) {
-                    const vpn = parseFloat(vpnMatch[0]);
-                    const resultado = 1 / (m * (val100seg / vpn) + q);
-                    result.innerText = "Resultado: " + resultado.toFixed(4);
-                    result.style.display = "block";
-                } else {
-                    message.innerText = "Error: No se pudo extraer el VPN.";
-                }
-            });
+            Tesseract.recognize(imageSrc, 'eng', { logger: m => console.log(m) })
+                .then(({ data: { text } }) => {
+                    const vpnMatch = text.match(/\d+\.\d+/);
+                    if (vpnMatch) {
+                        const vpn = parseFloat(vpnMatch[0]);
+                        document.getElementById('vpnVal').innerText = vpn;
+                        document.getElementById('dataBox2').style.display = "block";
+
+                        const resultado = 1 / (m * (val100seg / vpn) + q);
+                        result.innerText = "Resultado: " + resultado.toFixed(4);
+                        resultBox.style.display = "block";
+                    } else {
+                        message.innerText = "Error: No se pudo extraer el VPN.";
+                    }
+                });
         }
     </script>
 </body>
